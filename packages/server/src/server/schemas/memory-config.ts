@@ -53,7 +53,7 @@ export const serializedObservationConfigSchema = z.object({
     .optional()
     .describe('Async buffering interval or false'),
   bufferActivation: z.number().optional().describe('Ratio of buffered observations to activate'),
-  blockAfter: z.number().optional().describe('Token threshold for synchronous blocking'),
+  blockAfter: z.number().optional().describe('Token threshold that forces maximum buffered activation'),
 });
 
 /**
@@ -67,7 +67,7 @@ export const serializedReflectionConfigSchema = z.object({
     .record(z.string(), z.record(z.string(), z.unknown()).optional())
     .optional()
     .describe('Provider-specific options'),
-  blockAfter: z.number().optional().describe('Token threshold for synchronous blocking'),
+  blockAfter: z.number().optional().describe('Token threshold that forces maximum buffered activation'),
   bufferActivation: z.number().optional().describe('Ratio for async reflection buffering'),
 });
 

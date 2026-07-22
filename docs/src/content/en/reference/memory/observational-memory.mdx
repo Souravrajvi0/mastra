@@ -236,7 +236,7 @@ OM performs thresholding with fast local token estimation. Text uses `tokenx`, a
             name: 'blockAfter',
             type: 'number',
             description:
-              'Token threshold above which synchronous (blocking) observation is forced. Between `messageTokens` and `blockAfter`, only async buffering/activation is used. Above `blockAfter`, a synchronous observation runs as a last resort, while buffered activation still preserves a minimum remaining context (min(1000, retention floor)). Accepts a multiplier (1 < value < 2, multiplied by `messageTokens`) or an absolute token count (≥ 2, must be greater than `messageTokens`). Only relevant when `bufferTokens` is set. Defaults to `1.2` when async buffering is enabled.',
+              'Token threshold above which buffered activation uses the maximum activation ratio (`forceMaxActivation`). Between `messageTokens` and `blockAfter`, only async buffering/activation is used. Above `blockAfter`, activation promotes as much of the buffered observations as allowed while preserving minimum remaining context (min(1000, retention floor)). Synchronous blocking `observe()` is only reached when the threshold is met and there are no buffered chunks to activate. Accepts a multiplier (1 < value < 2, multiplied by `messageTokens`) or an absolute token count (≥ 2, must be greater than `messageTokens`). Only relevant when `bufferTokens` is set. Defaults to `1.2` when async buffering is enabled.',
             isOptional: true,
             defaultValue: '1.2 (when bufferTokens is set)',
           },
@@ -345,7 +345,7 @@ OM performs thresholding with fast local token estimation. Text uses `tokenx`, a
             name: 'blockAfter',
             type: 'number',
             description:
-              'Token threshold above which synchronous (blocking) reflection is forced. Between `observationTokens` and `blockAfter`, only async buffering/activation is used. Above `blockAfter`, a synchronous reflection runs as a last resort. Accepts a multiplier (1 < value < 2, multiplied by `observationTokens`) or an absolute token count (≥ 2, must be greater than `observationTokens`). Only relevant when `bufferActivation` is set. Defaults to `1.2` when async reflection is enabled.',
+              'Token threshold above which buffered reflection activation uses the maximum activation ratio. Between `observationTokens` and `blockAfter`, only async buffering/activation is used. Above `blockAfter`, activation promotes as much of the buffered reflections as allowed. Synchronous blocking reflection is only reached when the threshold is met and there are no buffered reflections to activate. Accepts a multiplier (1 < value < 2, multiplied by `observationTokens`) or an absolute token count (≥ 2, must be greater than `observationTokens`). Only relevant when `bufferActivation` is set. Defaults to `1.2` when async reflection is enabled.',
             isOptional: true,
             defaultValue: '1.2 (when bufferActivation is set)',
           },
@@ -626,7 +626,7 @@ export const agent = new Agent({
 
 Async buffering is **enabled by default**. It pre-computes observations in the background as the conversation grows — when the `messageTokens` threshold is reached, buffered observations activate instantly with no blocking LLM call.
 
-The lifecycle is: **buffer → activate → remove messages → repeat**. Background Observer calls run at `bufferTokens` intervals, each producing a chunk of observations. At threshold, chunks activate: observations move into the log, raw messages are removed from context. The `blockAfter` threshold forces a synchronous fallback if buffering can't keep up.
+The lifecycle is: **buffer → activate → remove messages → repeat**. Background Observer calls run at `bufferTokens` intervals, each producing a chunk of observations. At threshold, chunks activate: observations move into the log, raw messages are removed from context. The `blockAfter` threshold forces maximum activation of buffered chunks when pending tokens grow past the safety limit; synchronous observation is only used when the threshold is met and nothing is buffered to activate.
 
 Default settings:
 

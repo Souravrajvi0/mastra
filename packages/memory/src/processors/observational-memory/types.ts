@@ -169,17 +169,22 @@ export interface ObservationConfig {
   activateOnProviderChange?: boolean;
 
   /**
-   * Token threshold above which synchronous (blocking) observation is forced.
-   * Between `messageTokens` and `blockAfter`, only async buffering/activation is used.
-   * Above `blockAfter`, a synchronous observation runs as a last resort.
+   * Token threshold above which buffered activation uses the maximum activation ratio
+   * (`forceMaxActivation`). Between `messageTokens` and `blockAfter`, only async
+   * buffering/activation is used. Above `blockAfter`, activation promotes as much of the
+   * buffered observations as allowed while preserving the minimum remaining context.
+   *
+   * Synchronous blocking `observe()` is only reached when the threshold is met and there
+   * are no buffered chunks to activate — not as a direct consequence of crossing
+   * `blockAfter` while buffered chunks exist.
    *
    * Accepts either:
    * - A multiplier (1 < value < 2): multiplied by `messageTokens`.
-   *   e.g. `blockAfter: 1.5` with `messageTokens: 20_000` → blocks at 30,000.
+   *   e.g. `blockAfter: 1.5` with `messageTokens: 20_000` → activates at 30,000.
    * - An absolute token count (≥ 2): must be greater than `messageTokens`.
    *
    * Only relevant when `bufferTokens` is set.
-   * If not set, synchronous observation is never used when async buffering is enabled.
+   * If not set, synchronous observation is used directly at `messageTokens`.
    */
   blockAfter?: number;
 
@@ -289,17 +294,22 @@ export interface ReflectionConfig {
   providerOptions?: ProviderOptions;
 
   /**
-   * Token threshold above which synchronous (blocking) reflection is forced.
-   * Between `observationTokens` and `blockAfter`, only async buffering/activation is used.
-   * Above `blockAfter`, a synchronous reflection runs as a last resort.
+   * Token threshold above which buffered reflection activation uses the maximum
+   * activation ratio. Between `observationTokens` and `blockAfter`, only async
+   * buffering/activation is used. Above `blockAfter`, activation promotes as much of the
+   * buffered reflections as allowed.
+   *
+   * Synchronous blocking reflection is only reached when the threshold is met and there
+   * are no buffered reflections to activate — not as a direct consequence of crossing
+   * `blockAfter` while buffered data exists.
    *
    * Accepts either:
    * - A multiplier (1 < value < 2): multiplied by `observationTokens`.
-   *   e.g. `blockAfter: 1.5` with `observationTokens: 30_000` → blocks at 45,000.
+   *   e.g. `blockAfter: 1.5` with `observationTokens: 30_000` → activates at 45,000.
    * - An absolute token count (≥ 2): must be greater than `observationTokens`.
    *
    * Only relevant when `bufferActivation` is set.
-   * If not set, synchronous reflection is never used when async reflection is enabled.
+   * If not set, synchronous reflection is used directly at `observationTokens`.
    */
   blockAfter?: number;
 
