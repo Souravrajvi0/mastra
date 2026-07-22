@@ -337,22 +337,31 @@ export class ObservationStep {
       return { succeeded: false, record: freshStatus.record };
     }
 
+    let activationResult:
+      | {
+          activated: boolean;
+          record: any;
+          activatedMessageIds?: string[];
+        }
+      | undefined;
+
     // Try activation first if buffered chunks exist
     if (freshStatus.canActivate) {
-      const activation = await om.activate({
+      activationResult = await om.activate({
         threadId,
         resourceId,
         messages: messageList.get.all.db(),
+        pendingTokens: freshStatus.pendingTokens,
         currentModel: this.turn.actorModelContext,
         writer: this.turn.writer,
         messageList,
       });
 
-      if (activation.activated) {
+      if (activationResult.activated) {
         // Check reflection after activation — use maybeReflect so that a
         // completed buffered reflection is activated instantly instead of
         // running a redundant sync reflection from scratch.
-        const postActivationRecord = activation.record;
+        const postActivationRecord = activationResult.record;
         await om.reflector.maybeReflect({
           record: postActivationRecord,
           observationTokens: postActivationRecord.observationTokenCount ?? 0,
@@ -365,11 +374,21 @@ export class ObservationStep {
           lastActivityAt: getLastActivityFromMessages(messageList.get.all.db()),
         });
 
-        return {
-          succeeded: true,
-          record: activation.record,
-          activatedMessageIds: activation.activatedMessageIds,
-        };
+        // Partial activation may leave the live unobserved tail above threshold.
+        // Re-check before returning — fall through to sync observe() when needed.
+        const postActivationStatus = await om.getStatus({
+          threadId,
+          resourceId,
+          messages: messageList.get.all.db(),
+        });
+
+        if (!postActivationStatus.shouldObserve) {
+          return {
+            succeeded: true,
+            record: activationResult.record,
+            activatedMessageIds: activationResult.activatedMessageIds,
+          };
+        }
       }
     }
 
@@ -417,6 +436,7 @@ export class ObservationStep {
     return {
       succeeded: obsResult.observed,
       record: obsResult.record,
+      activatedMessageIds: activationResult?.activatedMessageIds,
       observerExchange: om.observer.lastExchange,
     };
   }
