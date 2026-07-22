@@ -563,17 +563,20 @@ export interface ObservationalMemoryObservationConfig {
   activateOnProviderChange?: boolean;
 
   /**
-   * Token threshold above which synchronous (blocking) observation is forced.
-   * When set, the system will never block for observation between `messageTokens`
-   * and `blockAfter` — only async buffering and activation are used in that range.
-   * Once unobserved tokens exceed `blockAfter`, a synchronous observation runs as a
-   * last resort to prevent context window overflow.
+   * Token threshold above which buffered activation uses the maximum activation ratio
+   * (`forceMaxActivation`). When set, the system will not block for observation between
+   * `messageTokens` and `blockAfter` — only async buffering and activation are used in
+   * that range. Once unobserved tokens exceed `blockAfter`, activation promotes as much
+   * of the buffered observations as allowed while preserving minimum remaining context.
+   *
+   * Synchronous blocking `observe()` is only reached when the threshold is met and there
+   * are no buffered chunks to activate.
    *
    * Accepts either:
    * - A **multiplier** (1 < value < 2): multiplied by `messageTokens`.
-   *   e.g. `blockAfter: 1.5` with `messageTokens: 20_000` → blocks at 30,000 tokens.
+   *   e.g. `blockAfter: 1.5` with `messageTokens: 20_000` → activates at 30,000 tokens.
    * - An **absolute token count** (≥ 2): must be greater than `messageTokens`.
-   *   e.g. `blockAfter: 80_000` → blocks at 80,000 tokens.
+   *   e.g. `blockAfter: 80_000` → activates at 80,000 tokens.
    *
    * Only relevant when `bufferTokens` is set. When `bufferTokens` is not set,
    * synchronous observation is used directly at `messageTokens` and this setting has no effect.
@@ -687,17 +690,20 @@ export interface ObservationalMemoryReflectionConfig {
   providerOptions?: Record<string, Record<string, unknown> | undefined>;
 
   /**
-   * Token threshold above which synchronous (blocking) reflection is forced.
-   * When set with async reflection enabled, the system will not block for
-   * reflection between `observationTokens` and `blockAfter` — only async
-   * buffering and activation are used in that range. Once observation tokens
-   * exceed `blockAfter`, a synchronous reflection runs as a last resort.
+   * Token threshold above which buffered reflection activation uses the maximum
+   * activation ratio. When set with async reflection enabled, the system will not block
+   * for reflection between `observationTokens` and `blockAfter` — only async buffering
+   * and activation are used in that range. Once observation tokens exceed `blockAfter`,
+   * activation promotes as much of the buffered reflections as allowed.
+   *
+   * Synchronous blocking reflection is only reached when the threshold is met and there
+   * are no buffered reflections to activate.
    *
    * Accepts either:
    * - A **multiplier** (1 < value < 2): multiplied by `observationTokens`.
-   *   e.g. `blockAfter: 1.5` with `observationTokens: 30_000` → blocks at 45,000 tokens.
+   *   e.g. `blockAfter: 1.5` with `observationTokens: 30_000` → activates at 45,000 tokens.
    * - An **absolute token count** (≥ 2): must be greater than `observationTokens`.
-   *   e.g. `blockAfter: 50_000` → blocks at 50,000 tokens.
+   *   e.g. `blockAfter: 50_000` → activates at 50,000 tokens.
    *
    * Only relevant when `bufferActivation` is set. When `bufferActivation` is not set,
    * synchronous reflection is used directly at `observationTokens` and this setting has no effect.
