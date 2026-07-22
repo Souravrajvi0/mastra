@@ -3158,6 +3158,8 @@ ${formattedMessages}
     checkThreshold?: boolean;
     /** Messages to use for threshold check (in-memory). If omitted, loads from storage. */
     messages?: MastraDBMessage[];
+    /** Freshly-counted pending tokens from the caller (e.g. getStatus). Avoids stale DB values. */
+    pendingTokens?: number;
     /** Current actor model for provider-change activation checks. */
     currentModel?: ObservationModelContext;
     /** Stream writer for emitting activation markers to the UI. */
@@ -3281,7 +3283,7 @@ ${formattedMessages}
 
     // Estimate current pending tokens from chunks
     const totalChunkMessageTokens = freshChunks.reduce((sum, c) => sum + (c.messageTokens ?? 0), 0);
-    const currentPendingTokens = freshRecord.pendingMessageTokens || totalChunkMessageTokens;
+    const currentPendingTokens = opts.pendingTokens ?? freshRecord.pendingMessageTokens ?? totalChunkMessageTokens;
 
     const forceMaxActivation = !!(
       this.observationConfig.blockAfter && currentPendingTokens >= this.observationConfig.blockAfter
