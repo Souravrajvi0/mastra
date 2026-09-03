@@ -37,6 +37,7 @@ import type {
 import type { ModelPackRecord, ModelPacksStorage } from '../storage/domains/model-packs/base.js';
 import type { FactoryProjectsStorage } from '../storage/domains/projects/base.js';
 import type { SourceControlStorageHandle } from '../storage/domains/source-control/base.js';
+import { seedPersonalOmDefaults } from './om-seed.js';
 import {
   getAuthProviderId,
   listTenantCredentialsForRequest,
@@ -529,6 +530,8 @@ export interface ThinkingConfigInfo {
   modeDefaults: Record<string, ThinkingLevelSetting>;
   /** Mode ids known to the controller (for rendering per-mode rows). */
   modes: string[];
+  /** False when the deployment refuses writes, so the UI can render read-only rows. */
+  editable: boolean;
 }
 
 /** `PUT /web/config/thinking` success payload. */
@@ -536,6 +539,27 @@ export interface UpdateThinkingConfigResponse {
   ok: true;
   globalDefault: ThinkingLevelSetting;
   modeDefaults: Record<string, ThinkingLevelSetting>;
+}
+
+/** Whether the caller may write deployment-wide thinking defaults. */
+async function canWriteThinkingDefaults(c: Context, auth: RouteAuth): Promise<boolean> {
+  if (!auth.enabled()) return true;
+  await auth.ensureUser(c);
+  const tenant = auth.tenant(c);
+  if (!tenant) return false;
+  return auth.isOrganizationAdmin(c, tenantOrgId(tenant));
+}
+
+/** Reject a thinking-defaults write when the caller lacks permission. */
+async function denyThinkingDefaultsWrite(c: Context, auth: RouteAuth): Promise<Response | undefined> {
+  if (!auth.enabled()) return undefined;
+  await auth.ensureUser(c);
+  const tenant = auth.tenant(c);
+  if (!tenant) return c.json({ error: 'unauthorized' }, 401);
+  if (!(await auth.isOrganizationAdmin(c, tenantOrgId(tenant)))) {
+    return c.json({ error: 'Only organization admins can change thinking defaults' }, 403);
+  }
+  return undefined;
 }
 
 export function readOMConfig(session: OMSession): OMConfigInfo {
@@ -771,6 +795,7 @@ export class ConfigRoutes extends Route<ConfigRoutesDeps> {
               // per-request, never written into process.env.
               await ctx.storage.setCredential(tenant, getAuthProviderId(provider), { type: 'api_key', key });
               onCredentialsChanged(tenant);
+              await seedPersonalOmDefaults({ memorySettings: options.memorySettings, tenant, provider });
               const records = await ctx.storage.listCredentials(ctx.orgId, ctx.userId);
               const providers = await listProviders({ controller, tenantCredentials: records });
               return c.json({ ok: true, provider: providers.find(p => p.provider === provider) });
@@ -1167,9 +1192,9 @@ export class ConfigRoutes extends Route<ConfigRoutesDeps> {
       // global `preferences.thinkingLevel` plus per-mode
       // `models.modeThinkingDefaults`. These are what request-time resolution
       // falls back to when a session carries no explicit override — including
-      // automated (rule-driven) Factory runs nobody opens interactively. In
-      // tenant mode, writes are disabled because the settings file is shared
-      // deployment-wide rather than scoped to an organization.
+      // automated (rule-driven) Factory runs nobody opens interactively. The
+      // settings file is deployment-wide rather than org-scoped, so writes in
+      // tenant mode require an organization admin.
 
       registerApiRoute('/web/config/thinking', {
         method: 'GET',
@@ -1178,11 +1203,13 @@ export class ConfigRoutes extends Route<ConfigRoutesDeps> {
           try {
             const settings = loadSettings(options.settingsPath);
             const modes = controller.listModes?.().map(mode => mode.id) ?? [];
+            const editable = await canWriteThinkingDefaults(loose(c), auth);
             return c.json({
               levels: THINKING_LEVEL_VALUES,
               globalDefault: settings.preferences.thinkingLevel,
               modeDefaults: settings.models.modeThinkingDefaults,
               modes,
+              editable,
             });
           } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
@@ -1194,9 +1221,8 @@ export class ConfigRoutes extends Route<ConfigRoutesDeps> {
         method: 'PUT',
         requiresAuth: false,
         handler: async c => {
-          if (auth.enabled()) {
-            return c.json({ error: 'Deployment thinking defaults can only be changed in local mode' }, 403);
-          }
+          const writeDenied = await denyThinkingDefaultsWrite(loose(c), auth);
+          if (writeDenied) return writeDenied;
           let body: { globalDefault?: unknown; modeDefaults?: unknown };
           try {
             const parsed: unknown = await c.req.json();

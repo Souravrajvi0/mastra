@@ -15,7 +15,7 @@ import type {
   SkillSourceStat,
   WorkspaceSandbox,
 } from '@mastra/core/workspace';
-import { getFactoryAuthUserFromContext, getFactoryAuthUserId } from './auth.js';
+import { getFactoryAuthOrgId, getFactoryAuthUserFromContext, getFactoryAuthUserId } from './auth.js';
 import type { MastraFactorySandboxConfig } from './factory.js';
 import type { GithubIntegration } from './integrations/github/integration.js';
 import { getGithubPat } from './integrations/github/pat.js';
@@ -41,8 +41,10 @@ import {
   resolveSessionWorkdir,
 } from './sandbox/session-sandbox.js';
 import type { SessionSetupGate } from './sandbox/session-sandbox.js';
-
+import type { FactoryProjectsStorage } from './storage/domains/projects/base.js';
 import type { WorkItemsStorage } from './storage/domains/work-items/base.js';
+import { parseSupervisorResourceId } from './supervisor/session.js';
+import { timedPhase } from './timing.js';
 
 const WORKSPACE_ID_PREFIX = 'mfw';
 const bundleDirectory = dirname(fileURLToPath(import.meta.url));
@@ -218,15 +220,26 @@ const factorySkillExtension: WorkspaceSkillExtension = {
 
 type DynamicWorkspaceContext = Parameters<typeof getDynamicWorkspace>[0];
 
+/**
+ * When a session's sandbox boots: on the agent's first command (`'lazy'`, the
+ * default) or as soon as the session's workspace is first resolved (`'eager'`).
+ * An eager start is fire-and-forget; if it fails, the lazy path still runs.
+ */
+export type FactorySandboxStart = 'lazy' | 'eager';
+
 export interface CreateWorkspaceFactoryOptions {
   /** Factory sandbox runtime config (session sandbox callback). */
   sandbox?: MastraFactorySandboxConfig;
+  /** Defaults to `'lazy'`. */
+  sandboxStart?: FactorySandboxStart;
   /** GitHub integration used to resolve Factory sessions and mint repo tokens. */
   github?: GithubIntegration;
   /** Work-items storage used to resolve the session's run-binding role, so
    * review-board sessions get the reviewer PAT as `GH_TOKEN`. Optional —
    * without it every session uses the default (worker) PAT. */
   workItems?: Pick<WorkItemsStorage, 'findRunBindingBySession'>;
+  /** Projects storage used to authorize workspace-free supervisor sessions. */
+  projects?: Pick<FactoryProjectsStorage, 'get'>;
   /** Runtime workspace/token registrations invalidated when a session retires. */
   workspaceRegistry?: FactoryWorkspaceRegistry;
 }
@@ -270,7 +283,8 @@ export class FactoryWorkspaceRegistry {
 }
 
 export function createWorkspaceFactory(options: CreateWorkspaceFactoryOptions = {}) {
-  const { sandbox: sandboxConfig, github, workItems } = options;
+  const { sandbox: sandboxConfig, github, projects, workItems } = options;
+  const eagerSandboxStart = options.sandboxStart === 'eager';
   const workspaceRegistry = options.workspaceRegistry ?? new FactoryWorkspaceRegistry();
   type GithubTokenRegistration = {
     inject: (token: string) => void;
@@ -294,6 +308,13 @@ export function createWorkspaceFactory(options: CreateWorkspaceFactoryOptions = 
   return async ({ requestContext, mastra, skillExtension }: DynamicWorkspaceContext) => {
     const effectiveSkillExtension = skillExtension ?? factorySkillExtension;
     const ctx = requestContext.get('controller') as AgentControllerRequestContext<MastraCodeState> | undefined;
+    const supervisorProjectId = parseSupervisorResourceId(ctx?.resourceId);
+    if (supervisorProjectId) {
+      const orgId = getFactoryAuthOrgId(getFactoryAuthUserFromContext(requestContext));
+      const project = orgId && projects ? await projects.get({ orgId, id: supervisorProjectId }) : null;
+      if (!project) throw new Error(`Factory supervisor ${supervisorProjectId} is not available to the current user`);
+      return undefined;
+    }
     const session =
       ctx?.resourceId && github ? await github.sourceControlStorage.sessions.getBySessionId(ctx.resourceId) : null;
 
@@ -430,11 +451,27 @@ export function createWorkspaceFactory(options: CreateWorkspaceFactoryOptions = 
         // stack a wrapper per call. Factory's setup runs first: a hook the
         // callback installed itself expects a prepared workspace.
         sandbox.setOnStart(previous => async args => {
-          await setupHook(args);
+          await timedPhase(`workspace.onStart(${args.outcome})`, async () => {
+            await setupHook(args);
+          });
           await previous?.(args);
         });
+        // Only a freshly constructed instance starts eagerly; the start itself
+        // waits for this resolver to finish because the start hook reads
+        // bindings declared further down.
+        startEagerly = eagerSandboxStart;
         return sandbox;
       });
+    let startEagerly = false;
+    const fireEagerStart = () => {
+      if (!startEagerly) return;
+      startEagerly = false;
+      Promise.resolve()
+        .then(() => sessionEntry.sandbox.start?.())
+        .catch(error => {
+          console.warn(`[factory] Eager sandbox start for session ${session.id} failed:`, error);
+        });
+    };
     const sessionEntry = constructSessionEntry();
     const workdir = sessionEntry.workdir;
     const isLocalSandbox = sessionEntry.sandbox.provider === 'local';
@@ -631,7 +668,7 @@ export function createWorkspaceFactory(options: CreateWorkspaceFactoryOptions = 
           return;
         }
         try {
-          await runSetupCommand(target, workdir, projectRepository.setupCommand);
+          await timedPhase('workspace.setup', () => runSetupCommand(target, workdir, projectRepository.setupCommand!));
           await gate.markSetupDone();
         } catch (setupError) {
           if (projectRepository.teardownCommand) {
@@ -730,10 +767,7 @@ export function createWorkspaceFactory(options: CreateWorkspaceFactoryOptions = 
       throw new Error(`Factory session ${session.sessionId} was retired during workspace materialization`);
     }
 
-    // Fully lazy: nothing provisions until the first real sandbox operation
-    // (`ensureRunning()` inside the provider). A background warm-up at session
-    // start was considered and dropped — it speculatively created a VM for
-    // every session, including ones whose agent never touches the workspace.
+    fireEagerStart();
     return workspace;
   };
 }

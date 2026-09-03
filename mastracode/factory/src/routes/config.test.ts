@@ -276,6 +276,7 @@ describe('provider key routes with a tenant', () => {
         controller,
         authStorage,
         modelCredentials: seed.credentials,
+        memorySettings: seed.memorySettings,
       }).routes(),
     );
     return app;
@@ -310,6 +311,35 @@ describe('provider key routes with a tenant', () => {
       key: 'sk-mine',
     });
     expect(await seed.credentials.resolveCredential('org1', 'user-b', 'anthropic')).toBeUndefined();
+  });
+
+  it("seeds the caller's unset OM models from the provider of a user-scoped key", async () => {
+    await putKey(buildApp(userA), { key: 'sk-mine' });
+    expect(await seed.memorySettings.get({ orgId: 'org1', userId: 'user-a' })).toMatchObject({
+      observerModelId: 'anthropic/claude-haiku-4-5',
+      reflectorModelId: 'anthropic/claude-haiku-4-5',
+    });
+  });
+
+  it('does not seed OM models for an org-scoped key', async () => {
+    await putKey(buildApp(userA), { key: 'sk-shared', scope: 'org' });
+    expect(await seed.memorySettings.get({ orgId: 'org1', userId: 'user-a' })).toBeNull();
+  });
+
+  it('still saves the key and returns 200 when OM seeding fails', async () => {
+    vi.spyOn(seed.memorySettings, 'patch').mockRejectedValueOnce(new Error('memory settings unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await putKey(buildApp(userA), { key: 'sk-mine' });
+
+    expect(res.status).toBe(200);
+    expect(await seed.credentials.getCredential({ orgId: 'org1', userId: 'user-a' }, 'anthropic')).toMatchObject({
+      type: 'api_key',
+      key: 'sk-mine',
+    });
+    expect(await seed.memorySettings.get({ orgId: 'org1', userId: 'user-a' })).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('seed personal OM defaults'), expect.anything());
+    warn.mockRestore();
   });
 
   it('stores an org-scoped key that all members inherit when the caller is an admin', async () => {
@@ -1426,7 +1456,22 @@ describe('thinking defaults routes', () => {
       globalDefault: 'off',
       modeDefaults: {},
       modes: ['build', 'plan', 'fast'],
+      editable: true,
     });
+  });
+
+  it('reports editable on GET based on tenant admin status', async () => {
+    const local = await buildApp(null, { authEnabled: false }).request('/web/config/thinking');
+    expect((await local.json()).editable).toBe(true);
+
+    const signedOut = await buildApp(null).request('/web/config/thinking');
+    expect((await signedOut.json()).editable).toBe(false);
+
+    const nonAdmin = await buildApp(userA, { isOrganizationAdmin: async () => false }).request('/web/config/thinking');
+    expect((await nonAdmin.json()).editable).toBe(false);
+
+    const admin = await buildApp(userA, { isOrganizationAdmin: async () => true }).request('/web/config/thinking');
+    expect((await admin.json()).editable).toBe(true);
   });
 
   it('round-trips global and per-mode defaults through the settings file', async () => {
@@ -1458,14 +1503,14 @@ describe('thinking defaults routes', () => {
     expect((await putThinking(app, { modeDefaults: ['high'] })).status).toBe(400);
   });
 
-  it('rejects deployment-scoped writes in tenant mode', async () => {
+  it('rejects deployment-scoped writes for non-admins in tenant mode', async () => {
     const nonAdmin = buildApp(userA, { isOrganizationAdmin: async () => false });
     expect((await putThinking(nonAdmin, { globalDefault: 'high' })).status).toBe(403);
 
     const signedOut = buildApp(null);
-    expect((await putThinking(signedOut, { globalDefault: 'high' })).status).toBe(403);
+    expect((await putThinking(signedOut, { globalDefault: 'high' })).status).toBe(401);
 
     const admin = buildApp(userA, { isOrganizationAdmin: async () => true });
-    expect((await putThinking(admin, { globalDefault: 'high' })).status).toBe(403);
+    expect((await putThinking(admin, { globalDefault: 'high' })).status).toBe(200);
   });
 });
