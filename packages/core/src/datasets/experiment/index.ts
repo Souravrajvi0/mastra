@@ -484,7 +484,7 @@ export async function runExperiment(mastra: Mastra, config: ExperimentConfig): P
       await beforeAll(hookArgs);
     }
 
-    const pMap = (await import('p-map')).default;
+    const { pMap } = await import('../../utils/p-map');
 
     await pMap(
       items.map((item, idx) => ({ item, idx })),

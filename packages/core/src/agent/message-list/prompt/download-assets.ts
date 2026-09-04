@@ -74,7 +74,7 @@ export async function downloadAssetsFromMessages({
   downloadRetries?: number;
   supportedUrls?: Record<string, RegExp[]>;
 }) {
-  const pMap = (await import('p-map')).default;
+  const { pMap } = await import('../../../utils/p-map');
 
   const filesToDownload = messages
     .filter(message => message.role === 'user')

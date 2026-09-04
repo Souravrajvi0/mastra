@@ -1,4 +1,4 @@
-import { estimateTokenCount } from 'tokenx';
+import { estimateTokenCount } from '@mastra/core/utils/token-estimate';
 
 import { safeSlice } from './string-utils';
 

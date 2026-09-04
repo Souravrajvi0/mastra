@@ -83,6 +83,7 @@ export default defineConfig({
     'src/zod-to-json.ts',
     'src/utils/collect-tool-mocks.ts',
     'src/utils/safe-stringify.ts',
+    'src/utils/token-estimate.ts',
     'src/evals/scoreTraces/index.ts',
     'src/agent/message-list/index.ts',
     'src/agent/durable/index.ts',

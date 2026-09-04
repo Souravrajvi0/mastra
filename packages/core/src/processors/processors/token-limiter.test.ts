@@ -1,5 +1,5 @@
 import type { TextPart } from '@internal/ai-sdk-v4';
-import { estimateTokenCount } from 'tokenx';
+import { estimateTokenCount } from '../../utils/token-estimate';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import type { MastraDBMessage } from '../../agent/message-list';

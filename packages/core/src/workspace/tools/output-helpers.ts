@@ -1,4 +1,4 @@
-import { estimateTokenCount, sliceByTokens } from 'tokenx';
+import { estimateTokenCount, sliceByTokens } from '../../utils/token-estimate';
 
 import { isValidationError } from '../../tools/validation';
 
