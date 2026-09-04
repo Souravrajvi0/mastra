@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, normalize, posix, resolve, win32 } from 'node:path';
-import { estimateTokenCount } from 'tokenx';
+import { estimateTokenCount } from '../utils/token-estimate';
 import type { MessageList, MastraDBMessage } from '../agent/message-list';
 import { signalToXmlMarkup } from '../agent/signals';
 import type { ProcessInputStepArgs, Processor, ToolCallInfo } from './index';

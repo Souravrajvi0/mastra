@@ -335,7 +335,7 @@ export async function runEvals(config: RunEvalsAnyConfig): Promise<RunEvalsResul
   const mastra = (target as any).getMastraInstance?.() || (target as any).mastra;
   const storage = mastra?.getStorage();
 
-  const pMap = (await import('p-map')).default;
+  const { pMap } = await import('../../utils/p-map');
   await pMap(
     data,
     async (item: RunEvalsDataItem<any>) => {

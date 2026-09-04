@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { MastraDBMessage } from '@mastra/core/agent';
 import type { MastraToolInvocation } from '@mastra/core/agent/message-list';
-import { estimateTokenCount } from 'tokenx';
+import { estimateTokenCount } from '@mastra/core/utils/token-estimate';
 
 import { measureImageBuffer } from './measure-image-buffer';
 import { resolveToolResultValue, serializeToolResultForTokenCounting } from './tool-result-helpers';

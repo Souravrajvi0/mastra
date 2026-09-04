@@ -1,9 +1,17 @@
-import slugifyModule from '@sindresorhus/slugify';
-import { interopDefault } from './interop';
-
 /**
- * `@sindresorhus/slugify` is ESM-only. Import slugify from here, not from the
- * package, so that the CommonJS build gets the function instead of the module
- * namespace. See {@link interopDefault}.
+ * ASCII slug helper for resource IDs.
+ *
+ * Implemented locally so published CommonJS chunks never static-import the
+ * ESM-only `@sindresorhus/slugify` package (see #22609).
  */
-export const slugify = interopDefault(slugifyModule);
+export function slugify(input: string): string {
+  if (!input) return '';
+
+  return input
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}

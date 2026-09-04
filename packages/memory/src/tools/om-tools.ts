@@ -2,7 +2,7 @@ import type { MastraDBMessage } from '@mastra/core/agent';
 import type { MemoryConfigInternal } from '@mastra/core/memory';
 import { createTool } from '@mastra/core/tools';
 import type { JSONSchema7 } from 'json-schema';
-import { estimateTokenCount } from 'tokenx';
+import { estimateTokenCount } from '@mastra/core/utils/token-estimate';
 
 import { safeSlice } from '../processors/observational-memory/string-utils';
 import {
